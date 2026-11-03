@@ -1,0 +1,621 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Central Telefônica</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #080a09;
+  color: #e8eee9;
+  font-family: Arial, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 16px;
+}
+
+.phone {
+  width: 100%;
+  max-width: 370px;
+  min-height: 620px;
+  background: linear-gradient(160deg,#18201c,#0a0d0b);
+  border: 1px solid #303a33;
+  border-radius: 34px;
+  padding: 28px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 22px 70px #000;
+}
+
+.speaker {
+  width: 74px;
+  height: 5px;
+  border-radius: 9px;
+  background: #3c4840;
+  margin-bottom: 30px;
+}
+
+.blank {
+  flex: 1;
+  width: 100%;
+  min-height: 210px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.dial-display {
+  width: 100%;
+  min-height: 36px;
+  text-align: center;
+  color: #e8eee9;
+  font-size: 23px;
+  letter-spacing: 4px;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  font-variant-numeric: tabular-nums;
+}
+
+.indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #526157;
+}
+
+.controls {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+button {
+  border: 1px solid #526057;
+  border-radius: 14px;
+  background: #1b2820;
+  color: #e7eee8;
+  padding: 16px 10px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: .35;
+}
+
+.call {
+  background: #1c3827;
+}
+
+.hang {
+  background: #351b1a;
+}
+
+.send {
+  grid-column: 1 / -1;
+}
+
+.keypad-wrap {
+  width: 100%;
+  margin-top: 18px;
+}
+
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 10px;
+}
+
+.key {
+  height: 58px;
+  background: linear-gradient(#202a24,#121915);
+  font-size: 22px;
+}
+
+.keypad-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.hidden {
+  display: none !important;
+}
+</style>
+</head>
+
+<body>
+
+<main class="phone">
+
+  <div class="speaker"></div>
+
+  <div class="blank">
+    <div class="dial-display" id="dialDisplay"></div>
+    <div class="indicator" id="indicator"></div>
+  </div>
+
+  <div class="controls">
+
+    <button class="call" id="call">
+      LIGAR
+    </button>
+
+    <button class="hang" id="hang" disabled>
+      DESLIGAR
+    </button>
+
+    <button class="send" id="send" disabled>
+      ENVIAR MENSAGEM
+    </button>
+
+  </div>
+
+  <section class="keypad-wrap hidden" id="keypadWrap">
+
+    <div class="keypad">
+
+      <button class="key" data-key="1">1</button>
+      <button class="key" data-key="2">2</button>
+      <button class="key" data-key="3">3</button>
+
+      <button class="key" data-key="4">4</button>
+      <button class="key" data-key="5">5</button>
+      <button class="key" data-key="6">6</button>
+
+      <button class="key" data-key="7">7</button>
+      <button class="key" data-key="8">8</button>
+      <button class="key" data-key="9">9</button>
+
+      <button class="key" data-key="*">*</button>
+      <button class="key" data-key="0">0</button>
+      <button class="key" data-key="#">#</button>
+
+    </div>
+
+    <div class="keypad-actions">
+      <button id="erase">APAGAR</button>
+      <button id="submit">ENVIAR</button>
+    </div>
+
+  </section>
+
+</main>
+
+<script>
+
+// NOMES CADASTRADOS
+
+const falecidos = [
+  "ISIS",
+  "YKARO",
+  "ARMAN",
+  "KALEL",
+  "LISSANDRE",
+  "MORGANA",
+  "VIRGULINO",
+  "CRISTINA",
+  "SOL"
+];
+
+const registrados = [
+  "SOFIA",
+  "ANA VITORIA",
+  "BIANCA",
+  "MARSHALL",
+  "JOSE",
+  "LUCAS",
+  "PIETRO",
+  "MARIA",
+  "GABRIELA"
+];
+
+// SISTEMA DE LETRAS
+
+const letras = {
+  "2": "ABC",
+  "3": "DEF",
+  "4": "GHI",
+  "5": "JKL",
+  "6": "MNO",
+  "7": "PQRS",
+  "8": "TUV",
+  "9": "WXYZ"
+};
+
+const $ = id => document.getElementById(id);
+
+let ligado = false;
+let keypadOpen = false;
+let mode = "name";
+
+let grupos = [];
+let currentKey = "";
+let currentCount = 0;
+let tapTimer = null;
+
+
+// TEXT TO SPEECH
+
+function falar(frase, sombria = false) {
+
+  if (!("speechSynthesis" in window)) return;
+
+  window.speechSynthesis.cancel();
+
+  const voz = new SpeechSynthesisUtterance(frase);
+
+  voz.lang = "pt-BR";
+  voz.rate = sombria ? 0.78 : 0.9;
+  voz.pitch = sombria ? 0.58 : 0.82;
+  voz.volume = 1;
+
+  const vozes = window.speechSynthesis.getVoices();
+
+  const portuguesa = vozes.find(v =>
+    v.lang && v.lang.toLowerCase().startsWith("pt")
+  );
+
+  if (portuguesa) voz.voice = portuguesa;
+
+  window.speechSynthesis.speak(voz);
+}
+
+
+// VISOR
+
+function atualizarDisplay() {
+
+  const atual = grupos
+    .map(g => g.digitos)
+    .join(" ");
+
+  $("dialDisplay").textContent = atual;
+}
+
+
+// CONTROLE DE DIGITAÇÃO
+
+function fecharGrupo() {
+
+  if (tapTimer) {
+    clearTimeout(tapTimer);
+    tapTimer = null;
+  }
+
+  currentKey = "";
+  currentCount = 0;
+}
+
+
+function limparEntrada() {
+
+  fecharGrupo();
+
+  grupos = [];
+
+  atualizarDisplay();
+}
+
+
+function mostrarTeclado(valor) {
+
+  keypadOpen = valor;
+
+  $("keypadWrap").classList.toggle(
+    "hidden",
+    !valor
+  );
+}
+
+
+// LIGAR
+
+function ligar() {
+
+  window.speechSynthesis?.cancel();
+
+  ligado = true;
+  mode = "name";
+
+  limparEntrada();
+  mostrarTeclado(false);
+
+  $("call").disabled = true;
+  $("hang").disabled = false;
+  $("send").disabled = false;
+
+  $("indicator").style.background = "#72b984";
+
+  falar(
+    "Olá, como posso ajudar? Caso tenha alguma informação, digite o nome da pessoa no teclado abaixo."
+  );
+}
+
+
+// DESLIGAR
+
+function desligar() {
+
+  window.speechSynthesis?.cancel();
+
+  ligado = false;
+  mode = "name";
+
+  limparEntrada();
+  mostrarTeclado(false);
+
+  $("call").disabled = false;
+  $("hang").disabled = true;
+  $("send").disabled = true;
+
+  $("indicator").style.background = "#526157";
+}
+
+
+// DIGITAÇÃO
+
+function toque(k) {
+
+  if (!ligado || !keypadOpen) return;
+
+  if (mode === "choice") {
+
+    if (k === "1") {
+      tentarNovamente();
+    }
+
+    else if (k === "0") {
+      falar("Ok, até mais.");
+      desligar();
+    }
+
+    return;
+  }
+
+  if (mode === "info") {
+    alertaSombrio();
+    return;
+  }
+
+  if (k === "*") return;
+  if (k === "#") return;
+
+  if (k === "0") {
+
+    fecharGrupo();
+
+    grupos.push({
+      digitos: "0"
+    });
+
+    atualizarDisplay();
+
+    return;
+  }
+
+  if (!/^[1-9]$/.test(k)) return;
+
+  if (currentKey === k && tapTimer) {
+
+    currentCount++;
+
+    grupos[grupos.length - 1].digitos += k;
+
+  } else {
+
+    fecharGrupo();
+
+    currentKey = k;
+    currentCount = 1;
+
+    grupos.push({
+      digitos: k
+    });
+
+  }
+
+  atualizarDisplay();
+
+  if (tapTimer) clearTimeout(tapTimer);
+
+  tapTimer = setTimeout(() => {
+
+    currentKey = "";
+    currentCount = 0;
+    tapTimer = null;
+
+  }, 1000);
+
+}
+
+
+// TRANSFORMAR NÚMEROS EM NOMES
+
+function decodificar() {
+
+  fecharGrupo();
+
+  let nome = "";
+
+  for (const grupo of grupos) {
+
+    const s = grupo.digitos;
+
+    if (s === "0") {
+      nome += " ";
+      continue;
+    }
+
+    const dig = s[0];
+
+    if (!letras[dig]) continue;
+
+    if (!s.split("").every(c => c === dig)) continue;
+
+    nome += letras[dig][
+      (s.length - 1) % letras[dig].length
+    ];
+
+  }
+
+  return nome
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+
+// ENVIAR NOME
+
+function enviar() {
+
+  if (!ligado || !keypadOpen) return;
+
+  if (mode === "choice") return;
+
+  if (mode === "info") {
+    alertaSombrio();
+    return;
+  }
+
+  const nome = decodificar();
+
+  if (!nome) {
+    limparEntrada();
+    return;
+  }
+
+  limparEntrada();
+  mostrarTeclado(false);
+
+  if (falecidos.includes(nome)) {
+
+    mode = "choice";
+
+    falar(
+      "Oh-oh, você quer falar com uma pessoa que já consta como falecida. Deseja reescrever? Pressione um para sim e zero para não."
+    );
+
+  }
+
+  else if (registrados.includes(nome)) {
+
+    mode = "info";
+
+    falar(
+      "Qual informação você deseja compartilhar?"
+    );
+
+  }
+
+  else {
+
+    mode = "name";
+
+    falar(
+      "Oh-oh, esse nome não está registrado no nosso sistema. Tente novamente."
+    );
+
+  }
+
+}
+
+
+// REESCREVER
+
+function tentarNovamente() {
+
+  mode = "name";
+
+  limparEntrada();
+  mostrarTeclado(false);
+
+  falar("Ok, tente novamente.");
+
+}
+
+
+// ALERTA SOMBRIO
+
+function alertaSombrio() {
+
+  limparEntrada();
+  mostrarTeclado(false);
+
+  falar(
+    "Você está se metendo aonde não devia.",
+    true
+  );
+
+  setTimeout(desligar, 2600);
+
+}
+
+
+// BOTÕES
+
+$("call").onclick = ligar;
+
+$("hang").onclick = () => {
+  falar("Chamada encerrada.");
+  desligar();
+};
+
+$("send").onclick = () => {
+
+  if (!ligado) return;
+
+  if (mode === "choice") {
+    mostrarTeclado(true);
+    return;
+  }
+
+  mostrarTeclado(!keypadOpen);
+
+};
+
+document.querySelectorAll("[data-key]").forEach(botao => {
+
+  botao.onclick = () => {
+    toque(botao.dataset.key);
+  };
+
+});
+
+$("erase").onclick = () => {
+
+  fecharGrupo();
+
+  grupos.pop();
+
+  atualizarDisplay();
+
+};
+
+$("submit").onclick = enviar;
+
+if ("speechSynthesis" in window) {
+  window.speechSynthesis.getVoices();
+}
+
+</script>
+
+</body>
+</html>
